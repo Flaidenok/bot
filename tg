@@ -1,0 +1,205 @@
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler, CallbackContext
+
+# Хранение состояния
+user_data = {}
+
+# Список товаров 
+products = {
+    "Москва": {
+        "Краснопресненская": {
+            "Товар 1": {"description": "Описание товара 1", "price": 100},
+            "Товар 2": {"description": "Описание товара 2", "price": 200},
+        },
+        "Арбатская": {
+            "Товар A": {"description": "Описание товара A", "price": 150},
+            "Товар B": {"description": "Описание товара B", "price": 250},
+        },
+    },
+    "Санкт-Петербург": {
+        "Невский проспект": {
+            "Товар X": {"description": "Описание товара X", "price": 300},
+            "Товар Y": {"description": "Описание товара Y", "price": 400},
+        },
+        "Площадь Восстания": {
+            "Товар M": {"description": "Описание товара M", "price": 350},
+            "Товар N": {"description": "Описание товара N", "price": 450},
+        },
+    },
+}
+
+# Менеджеры для веток 
+managers = {
+    "Москва": "https://t.me/Ksyshkaa00",
+    "Санкт-Петербург": "https://t.me/vreind",
+}
+
+# Главное меню
+main_menu_keyboard = [
+    ['Каталог', 'Корзина'],
+    ['Избранное', 'Связаться с менеджером']
+]
+
+
+
+def start(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text("Добро пожаловать в магазин!",
+                              reply_markup=ReplyKeyboardMarkup(main_menu_keyboard, resize_keyboard=True))
+
+
+# Обработка команды "Каталог"
+def catalog(update: Update, context: CallbackContext) -> None:
+    city = "Москва"
+    metro = "Краснопресненская"
+
+    user_data['city'] = city
+    user_data['metro'] = metro
+
+    show_catalog(update, context)
+
+
+# Показ каталога товаров
+def show_catalog(update: Update, context: CallbackContext) -> None:
+    city = user_data.get('city')
+    metro = user_data.get('metro')
+    products_list = products[city][metro]
+
+    keyboard = [[product] for product in products_list.keys()]
+    keyboard.append(['Назад'])  # Добавляем кнопку "Назад"
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    update.message.reply_text("Выберите товар:", reply_markup=reply_markup)
+
+
+# Обработка выбора товара
+def handle_product(update: Update, context: CallbackContext) -> None:
+    city = user_data.get('city')
+    metro = user_data.get('metro')
+    product_name = update.message.text
+
+    if product_name == 'Назад':
+        start(update, context)  # Возврат в главное меню
+        return
+
+    if city and metro and product_name in products[city][metro]:
+        product = products[city][metro][product_name]
+        user_data['selected_product'] = product_name
+        update.message.reply_text(f"{product_name}\n{product['description']}\nЦена: {product['price']} руб.",
+                                  reply_markup=InlineKeyboardMarkup([
+                                      [InlineKeyboardButton("Добавить в корзину", callback_data='add_to_cart')],
+                                      [InlineKeyboardButton("Добавить в избранное", callback_data='add_to_favorites')],
+                                      [InlineKeyboardButton("Назад", callback_data='back_to_catalog')]
+                                  ]))
+    else:
+        update.message.reply_text("Пожалуйста, выберите корректный товар.")
+
+
+# Добавление в корзину
+def add_to_cart(query: Update, context: CallbackContext) -> None:
+    product_name = user_data.get('selected_product')
+    if 'cart' not in user_data:
+        user_data['cart'] = []
+    user_data['cart'].append(product_name)
+    context.bot.send_message(chat_id=query.message.chat_id, text=f"{product_name} добавлен в корзину.")
+
+# Показ корзины
+def show_cart(update: Update, context: CallbackContext) -> None:
+    cart_items = user_data.get('cart', [])
+    if not cart_items:
+        update.message.reply_text("Корзина пуста.",
+                                  reply_markup=ReplyKeyboardMarkup(main_menu_keyboard, resize_keyboard=True))
+    else:
+        cart_message = "Ваша корзина:\n" + "\n".join(cart_items)
+        cart_message += "\n\nВыберите действие:"
+        keyboard = [["Оформить заказ"], ["Назад"]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        update.message.reply_text(cart_message, reply_markup=reply_markup)
+
+
+# Показ корзины
+def show_cart(update: Update, context: CallbackContext) -> None:
+    cart_items = user_data.get('cart', [])
+    if not cart_items:
+        update.message.reply_text("Корзина пуста.",
+                                  reply_markup=ReplyKeyboardMarkup(main_menu_keyboard, resize_keyboard=True))
+    else:
+        cart_message = "Ваша корзина:\n" + "\n".join(cart_items)
+        cart_message += "\n\nВыберите действие:"
+        keyboard = [["Оформить заказ"], ["Назад"]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        update.message.reply_text(cart_message, reply_markup=reply_markup)
+
+
+# Оформление заказа
+def checkout(update: Update, context: CallbackContext) -> None:
+    # Получаем ID менеджера в зависимости от города или логики
+    manager_chat_id = managers[user_data['city']]
+
+    # Перенаправление пользователя к менеджеру
+    update.message.reply_text("Вы будете перенаправлены к менеджеру.", reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("Связаться с менеджером", url=f"https://t.me/{manager_chat_id}")]
+    ]))
+
+
+# Показ избранного
+def show_favorites(update: Update, context: CallbackContext) -> None:
+    favorites = user_data.get('favorites', [])
+    if not favorites:
+        update.message.reply_text("Избранное пусто.",
+                                  reply_markup=ReplyKeyboardMarkup(main_menu_keyboard, resize_keyboard=True))
+    else:
+        favorites_message = "Ваши избранные товары:\n" + "\n".join(favorites)
+
+        # Создаем список кнопок для избранного
+        keyboard = [
+            [InlineKeyboardButton(f"Добавить {item} в корзину", callback_data=f'add_fav_{item}')] for item in favorites
+        ]
+        keyboard.append([InlineKeyboardButton("Назад", callback_data='back_to_main_menu')])  # Добавляем кнопку "Назад"
+
+        reply_markup = InlineKeyboardMarkup(keyboard)  # Используем InlineKeyboardMarkup для инлайн-кнопок
+        update.message.reply_text(favorites_message, reply_markup=reply_markup)
+
+
+# Обработка нажатий на кнопки
+def button_handler(update: Update, context: CallbackContext) -> None:
+    query = update.callback_query
+    query.answer()
+
+    if query.data == 'add_to_cart':
+        add_to_cart(query, context)
+    elif query.data == 'checkout':
+        checkout(query, context)  # Здесь просто вызываем функцию checkout
+    elif query.data == 'add_to_favorites':
+        product_name = user_data.get('selected_product')
+        if 'favorites' not in user_data:
+            user_data['favorites'] = []
+        user_data['favorites'].append(product_name)
+        query.message.reply_text(f"{product_name} добавлен в избранное.")
+    elif query.data == 'back_to_catalog':
+        show_catalog(query, context)
+    elif query.data == 'back_to_main_menu':
+        start(query, context)  # Возврат в главное меню
+    elif query.data.startswith('add_fav_'):
+        product_name = query.data.split('add_fav_', 1)[1]
+        user_data['selected_product'] = product_name
+        add_to_cart(query, context)
+    elif query.data == 'contact_manager':
+        # Здесь можно назначить другого менеджера, если это необходимо
+        other_manager_chat_id = other_managers[user_data['city']]
+        query.message.reply_text("Перенаправляю вас к другому менеджеру...", reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("Связаться с другим менеджером", url=f"https://t.me/{other_manager_chat_id}")]
+        ]))
+
+# Основная функция
+if name == "main":
+    updater = Updater("7828219963:AAH2jNtlbdtTECOCW6th1OWX4D7RQy4lFmI", use_context=True)
+
+    dp = updater.dispatcher
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.regex('^Каталог$'), catalog))
+    dp.add_handler(MessageHandler(Filters.regex('^Корзина$'), show_cart))
+    dp.add_handler(MessageHandler(Filters.regex('^Избранное$'), show_favorites))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_product))
+    dp.add_handler(CallbackQueryHandler(button_handler))
+
+    updater.start_polling()
+    updater.idle()
